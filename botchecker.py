@@ -11,10 +11,26 @@ BLOCKLIST='namelist.txt'
 
 def update_namelist():
     # uses namelist from https://github.com/LinoYeen/Namelists 
-    # If the name list is older than MAX_BLOCKLIST_AGE, delete it.
-    # Need to do some silly type coersion here because apparently everything from the environment
-    # is a string I guess?
-    if (time.time() - os.stat(BLOCKLIST)[stat.ST_MTIME]) > int(os.environ.get('MAX_BLOCKLIST_AGE')):
+
+    # get a datetime object for the local blocklist file mtime
+    filetime = datetime.fromtimestamp(os.path.getmtime(BLOCKLIST), tz=timezone.utc)
+    
+    # call the github public api and pull the latest commit date for namelist.txt
+    response = requests.get(
+        'https://api.github.com/repos/LinoYeen/Namelists/commits',
+        headers={
+            'Accept': 'application/vnd.github.v3+json'
+        },
+        params={
+            'path': 'namelist.txt',
+            'per_page': 1
+        }
+    )
+    committime = dt.parse(response.json()[0]['commit']['committer']['date'])
+
+    # if committime is newer than filetime, we download
+    if (committime > filetime): 
+        print('*** Newer blocklist exists... removing old blocklist')
         os.remove(BLOCKLIST)
 
     # Download the file if it doesn't already exist.  Note that this isn't particularly sophisticated,
@@ -24,6 +40,7 @@ def update_namelist():
         response = requests.get('https://raw.githubusercontent.com/LinoYeen/Namelists/main/namelist.txt')
         with open(BLOCKLIST, 'wb') as f:
             f.write(response.content)
+        print('*** Blocklist downloaded.')
 
 def blocklist_lookup(login_name):
     # before doing a blocklist lookup, we'll make sure we have a fresh namelist
