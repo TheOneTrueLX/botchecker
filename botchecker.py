@@ -1,4 +1,4 @@
-import os, stat, mmap, time
+import os, mmap
 from datetime import datetime, timezone
 import argparse
 
@@ -61,7 +61,7 @@ def twitch_api_auth():
         'client_id': os.environ.get('TWITCH_CLIENT_ID'),
         'client_secret': os.environ.get('TWITCH_CLIENT_SECRET'),
         'grant_type': 'client_credentials',
-        'scope': 'user:read:email user:read:broadcast'
+        'scope': 'user:read:email user:read:broadcast channel:moderate user:manage:blocked_users'
     }
 
     response = requests.post('https://id.twitch.tv/oauth2/token', params=auth_payload)
