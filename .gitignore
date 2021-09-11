@@ -137,3 +137,7 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 namelist.txt
+namelist-current-backup.txt
+namelist-current.txt
+namelist-scratch-backup.txt
+namelist-scratch.txt
