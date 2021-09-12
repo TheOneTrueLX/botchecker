@@ -19,45 +19,57 @@ CURRENT_BLOCKLIST='namelist-current.txt'
 WORKING_BLOCKLIST='namelist.txt'
 SCRATCH_BLOCKLIST='namelist-scratch.txt'
 
-def get_access_token_from_url(url):
-    token = str(urlopen(url).read(), 'utf-8')
-    return token.split('=')[1].split('&')[0] #TODO: get the right slice
-
 class HTTPServerHandler(BaseHTTPRequestHandler):
-    def __init__(self, request, address, server, client_id, client_secret):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, request, address, server):
         super().__init__(request, address, server)
 
     def do_GET(self):
-        TWITCH_API_AUTH_URI="https://id.twitch.tv/oauth2/authorize?" 
-        + "response_type=token+id_token"
-        + "&client_id={}".format(os.environ.get('TWITCH_CLIENT_ID'))
-        + "&redirect_uri=http://localhost"
-        + "&scope=viewing_activity_read+openid"
-        + "&state=c3ab8aa609ea11e793ae92361f002671"
-        + "&claims={\"id_token\":{\"email_verified\":null}}"
-        
+        '''
+        Handle callback request from Twitch 
+        '''
+        # Send a success response code and bare minimum headers back to the
+        # user's browser
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
 
         if 'access_token' in self.path:
-            self.auth_code = self.path.split('=')[1] #TODO: get the right slice
+            # Spit out a basic HTML repsonse to the browser
             self.wfile.write(bytes('<HTML><H1>YOU CAN NOW CLOSE THIS WINDOW</H1></HTML>'), 'utf-8')
-            self.server.access_token = get_access_token_from_url(TWITCH_API_AUTH_URI + self.auth_code)
+
+            # parse out the access token from the query string
+            self.server.access_token = self.path.split('=')[1]
 
     def log_message(self, format, *args):
+        # by default, http.server logging is noisy, so we fix that here.
         return
 
 class AuthTokenHandler:
-    def __init__(self, client_id, client_secret):
-        self._client_id = client_id
-        self._client_secret = client_secret
-
     def get_access_token(self):
-        httpServer = HTTPServer(('localhost', 8888), HTTPServerHandler)
+        # a note on scopes:
+        #   channel:moderate is required to perform moderation actions in the chat API (e.g. banning users)
+        #   user:manage:blocked_users is required to manage a user's blocklist
+        ACCESS_URI="https://id.twitch.tv/oauth2/authorize"
+        + "?client_id={}".format(os.environ.get('TWITCH_CLIENT_ID'))
+        + "&redirect_uri=http://{}:{}".format(os.environ.get('CALLBACK_HOST'), os.environ.get('CALLBACK_PORT'))
+        + "&response_type=token"
+        + "&scope=channel:moderate+user:manage:blocked_users"
+
+        # Pop open the user's browser and open it to the Twitch OAuth URL
+        open_new(ACCESS_URI)
+
+        # Open up an HTTP server instance to listen to handle the callback from Twitch
+        httpServer = HTTPServer(
+            (
+                os.environ.get('CALLBACK_HOST'),
+                os.environ.get('CALLBACK_PORT')
+            ),
+            lambda request, address, server: HTTPServerHandler(
+                request, address, server
+            )
+        )
         httpServer.handle_request()
+        return httpServer.access_token
 
 def main():
     # load the secrets from .env
@@ -101,6 +113,22 @@ def main():
 
     # This is where the party starts.
     diff = open(SCRATCH_BLOCKLIST).readline()
+
+    # Most users aren't going to be expecting a brower window to get popped open by
+    # a python script, so we should probably explain wtf is about to happen...
+    print("""
+    This application needs to be authorized with Twitch to allow access to your blocklist and/or
+    channel bans.  
+
+    In a few moments, a browser window will open requesting authorization from Twitch. Click the
+    "authorize" button to allow this script to continue.
+
+    If you've already authorized this script previously, 
+    """)
+
+    # Do the OAuth dance with Twitch
+    twitchauth = AuthTokenHandler()
+    access_token = twitchauth.get_access_token()
 
     #TODO: load the contents of diff into both the user's blocklist and channel bans
 
